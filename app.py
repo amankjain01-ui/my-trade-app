@@ -9,83 +9,119 @@ from google.oauth2.service_account import Credentials
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
-# --- 1. PAGE CONFIG ---
+# --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Dabba Gul Pro", 
+    page_title="Market Pulse Pro", 
     layout="wide", 
-    page_icon="📦",
+    page_icon="📈",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. THEME: ZERODHA DARK MODE ---
+# --- 2. THEME: MARKET PULSE DARK MODE (Pure Black) ---
 st.markdown("""
     <style>
-        .stApp { background-color: #0e0e0e; color: #e0e0e0; }
-        [data-testid="stSidebar"] { background-color: #121212; border-right: 1px solid #333; }
-        .stTextInput input, .stNumberInput input, .stSelectbox div { 
-            background-color: #1e1e1e !important; color: white !important; border: 1px solid #444 !important; 
-        }
-        .stButton button { width: 100%; border-radius: 4px; font-weight: bold; border: none; }
-        .card { background-color: #1e1e1e; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px; }
-        .metric-up { color: #2ecc71; font-weight: bold; }
-        .metric-down { color: #ff5252; font-weight: bold; }
-        .big-price { font-size: 36px; font-weight: bold; font-family: sans-serif; }
+        /* MAIN BACKGROUND */
+        .stApp { background-color: #000000; color: #ffffff; }
         
-        /* Custom Table Styling */
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; color: #888; border-bottom: 1px solid #333; padding: 8px; }
-        td { padding: 8px; border-bottom: 1px solid #222; }
+        /* SIDEBAR */
+        [data-testid="stSidebar"] { background-color: #121212; border-right: 1px solid #222; }
+        
+        /* INPUT FIELDS */
+        .stTextInput input, .stNumberInput input, .stSelectbox div { 
+            background-color: #1e1e1e !important; 
+            color: white !important; 
+            border: 1px solid #333 !important; 
+            border-radius: 4px;
+        }
+        
+        /* BUTTONS */
+        .stButton button {
+            background-color: #2ecc71;
+            color: black;
+            font-weight: bold;
+            border: none;
+            border-radius: 4px;
+        }
+        
+        /* CARDS (Watchlist Style) */
+        .watchlist-card {
+            background-color: #111;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        
+        /* TEXT COLORS */
+        .text-green { color: #2ecc71; font-weight: bold; }
+        .text-red { color: #ff5252; font-weight: bold; }
+        .text-white { color: #ffffff; }
+        .text-grey { color: #888888; font-size: 12px; }
+        
+        /* BIG PRICE */
+        .big-price { font-size: 32px; font-weight: bold; font-family: 'Roboto', sans-serif; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. SESSION STATE INITIALIZATION ---
+# --- 3. EXACT ASSETS FROM SCREENSHOT ---
+ASSETS_INFO = {
+    "Gold 05Feb":      {"lot": 100, "start": 134230.00},
+    "Silver 05Mar":    {"lot": 30,  "start": 204172.00},
+    "Crude Oil 18Dec": {"lot": 100, "start": 5074.00},
+    "Copper 31Dec":    {"lot": 2500,"start": 1108.50},
+    "Aluminium 31Dec": {"lot": 5000,"start": 280.80},
+    "Zinc 31Dec":      {"lot": 5000,"start": 303.25},
+    "Gold Mini 05Jan": {"lot": 10,  "start": 132605.00},
+    "Silver Mini 27Feb":{"lot": 1,   "start": 204660.00},
+    "USDINR":          {"lot": 1000,"start": 90.368}
+}
+
+# --- 4. SESSION STATE INITIALIZATION ---
 if 'balance' not in st.session_state:
     st.session_state.balance = 0.0
 if 'user' not in st.session_state:
     st.session_state.user = None
-
-# *** EXACT PRICES FROM YOUR MCX SCREENSHOT ***
 if 'prices' not in st.session_state:
-    st.session_state.prices = {
-        "Gold": 134278.00,      # Matched your screenshot
-        "Silver": 204240.00,    # Matched your screenshot
-        "Crude Oil": 5098.00,   # Matched your screenshot
-        "Natural Gas": 356.70,  # Matched your screenshot
-        "Copper": 1109.80,      # Matched your screenshot
-        "Zinc": 303.30,         # Matched your screenshot
-        "Lead": 180.60,         # Matched your screenshot
-        "Nifty 50": 24145.00,   # Standard Nifty
-        "Bank Nifty": 51095.00  # Standard Bank Nifty
-    }
-
+    # Initialize prices with the exact values from screenshot
+    st.session_state.prices = {k: v['start'] for k, v in ASSETS_INFO.items()}
+    
 if 'history' not in st.session_state:
+    # Generate fake history so the chart isn't empty on load
     st.session_state.history = {}
+    for sym, start_price in st.session_state.prices.items():
+        times = [datetime.now() - timedelta(minutes=i*15) for i in range(50)]
+        times.reverse()
+        # Generate random walk history
+        prices = [start_price]
+        for _ in range(49):
+            change = random.uniform(-0.001, 0.001)
+            prices.append(prices[-1] * (1 + change))
+        
+        st.session_state.history[sym] = {'times': times, 'prices': prices}
 
-# --- 4. LIVE TICK ENGINE (The Heartbeat) ---
+# --- 5. LIVE TICK ENGINE ---
 def update_prices():
     """Moves prices slightly to simulate live market"""
     for symbol in st.session_state.prices:
         current = st.session_state.prices[symbol]
-        # Random tick generation (mostly noise)
-        movement = current * random.uniform(-0.0003, 0.0003) 
+        # Tiny movement to look alive
+        movement = current * random.uniform(-0.0001, 0.0001) 
         new_price = current + movement
         st.session_state.prices[symbol] = new_price
         
-        # Save to history for chart
-        if symbol not in st.session_state.history:
-            st.session_state.history[symbol] = {'times': [], 'prices': []}
-        
+        # Update Chart Data
         st.session_state.history[symbol]['times'].append(datetime.now())
         st.session_state.history[symbol]['prices'].append(new_price)
         
-        # Keep chart data limited to last 50 ticks
-        if len(st.session_state.history[symbol]['prices']) > 100:
+        # Keep only last 60 candles
+        if len(st.session_state.history[symbol]['prices']) > 60:
             st.session_state.history[symbol]['prices'].pop(0)
             st.session_state.history[symbol]['times'].pop(0)
 
-update_prices() # Run once per reload
+update_prices()
 
-# --- 5. DATABASE FUNCTIONS ---
+# --- 6. DATABASE CONNECTION ---
 def connect_db():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -123,16 +159,9 @@ def update_portfolio_db(user, symbol, qty, price, action):
             ws.append_row([key, user, symbol, qty, price])
     except: pass
 
-# --- 6. LOT SIZES (Standard) ---
-ASSETS_INFO = {
-    "Gold": 1, "Silver": 1, "Crude Oil": 100, 
-    "Natural Gas": 1250, "Copper": 2500, "Zinc": 5000, "Lead": 5000,
-    "Nifty 50": 50, "Bank Nifty": 15
-}
-
 # --- 7. LOGIN SCREEN ---
 if st.session_state.user is None:
-    st.markdown("<br><br><h1 style='text-align:center; color:#e74c3c'>📦 Dabba Gul Pro</h1>", unsafe_allow_html=True)
+    st.markdown("<br><br><h1 style='text-align:center; color:#2ecc71'>Market Pulse Pro</h1>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         with st.form("login"):
@@ -153,84 +182,99 @@ if st.session_state.user is None:
 # --- 8. MAIN DASHBOARD ---
 st_autorefresh(interval=1000, key="data_refresh")
 
-# --- SIDEBAR (CALIBRATION) ---
+# --- SIDEBAR: WATCHLIST ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
     
-    st.info("💡 TIP: If prices are different on TV, Type the new price below to fix it.")
-    
-    with st.expander("⚙️ SET PRICES (Calibration)", expanded=True):
+    # Calibration (Hidden inside expander)
+    with st.expander("⚙️ Calibrate Prices"):
         for sym in st.session_state.prices:
-            # The Admin can type the real price here if it changes
-            new_val = st.number_input(f"{sym}", value=float(st.session_state.prices[sym]), step=1.0, format="%.2f")
-            if abs(new_val - st.session_state.prices[sym]) > 0.01:
+            new_val = st.number_input(f"{sym}", value=float(st.session_state.prices[sym]))
+            if abs(new_val - st.session_state.prices[sym]) > 1:
                 st.session_state.prices[sym] = new_val
 
-    st.markdown("---")
-    st.caption("WATCHLIST")
+    st.markdown("### Watchlist")
+    
+    # WATCHLIST GRID (Like Screenshot)
     for sym, price in st.session_state.prices.items():
-        change = random.choice(["+0.23%", "-0.10%", "+3.28%", "+0.53%"])
-        color = "#2ecc71" if "+" in change else "#ff5252"
-        c1, c2 = st.columns([2, 1.5])
-        c1.markdown(f"**{sym}**")
-        c2.markdown(f"<span style='color:{color}'>₹{price:,.0f}</span>", unsafe_allow_html=True)
+        # Fake daily change %
+        change_pct = random.uniform(-0.5, 0.5)
+        color_class = "text-green" if change_pct >= 0 else "text-red"
+        
+        st.markdown(f"""
+        <div class="watchlist-card">
+            <div class="text-white" style="font-weight:bold;">{sym}</div>
+            <div class="text-white" style="font-size:18px;">{price:,.2f}</div>
+            <div class="{color_class}" style="font-size:12px;">{change_pct:+.2f}%</div>
+        </div>
+        """, unsafe_allow_html=True)
     
     if st.button("LOGOUT"):
         st.session_state.clear()
         st.rerun()
 
 # --- TOP HEADER ---
-st.markdown(f"""
-    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
-            <span style="color:#888">Funds</span>
-            <h2 style="color:#2ecc71; margin:0">₹{st.session_state.balance:,.2f}</h2>
-        </div>
-        <div>
-            <span style="color:#888">Status</span>
-            <h4 style="color:#2ecc71; margin:0">● LIVE MARKET</h4>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
+c1, c2 = st.columns([3, 1])
+with c1:
+    st.markdown(f"<span style='color:#888'>Available Margin</span><br><span class='big-price text-green'>₹{st.session_state.balance:,.2f}</span>", unsafe_allow_html=True)
 
+# --- CHARTING AREA ---
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    # ASSET SELECTOR
-    selected = st.selectbox("Select Asset", list(st.session_state.prices.keys()), label_visibility="collapsed")
+    # 1. ASSET SELECTOR
+    selected = st.selectbox("Select Asset", list(ASSETS_INFO.keys()))
     current_price = st.session_state.prices[selected]
     
-    # BIG PRICE DISPLAY
-    st.markdown(f"<div class='big-price'>₹{current_price:,.2f}</div>", unsafe_allow_html=True)
+    # 2. BIG PRICE HEADER
+    st.markdown(f"<span class='big-price'>{current_price:,.2f}</span> <span style='color:#888'>LTP</span>", unsafe_allow_html=True)
     
-    # CHART
-    if selected in st.session_state.history:
-        data = st.session_state.history[selected]
-        df_chart = pd.DataFrame({'Price': data['prices'], 'Time': data['times']})
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df_chart['Time'], y=df_chart['Price'], mode='lines', 
-                                 line=dict(color='#2ecc71', width=2), fill='tozeroy', fillcolor='rgba(46, 204, 113, 0.1)'))
-        fig.update_layout(template="plotly_dark", paper_bgcolor="#1e1e1e", plot_bgcolor="#1e1e1e",
-                          height=450, margin=dict(t=10, b=10, l=10, r=10), xaxis_showgrid=False, yaxis_showgrid=True)
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    # 3. GENERATE CANDLES FOR CHART (Simulation)
+    data = st.session_state.history[selected]
+    df_chart = pd.DataFrame({'Close': data['prices'], 'Time': data['times']})
+    
+    # Create Open/High/Low from Close to make candles look real
+    df_chart['Open'] = df_chart['Close'] * (1 + np.random.uniform(-0.0005, 0.0005, len(df_chart)))
+    df_chart['High'] = df_chart[['Open', 'Close']].max(axis=1) * (1 + np.random.uniform(0, 0.0005, len(df_chart)))
+    df_chart['Low'] = df_chart[['Open', 'Close']].min(axis=1) * (1 - np.random.uniform(0, 0.0005, len(df_chart)))
+    
+    # 4. RENDER MARKET PULSE STYLE CHART
+    fig = go.Figure(data=[go.Candlestick(
+        x=df_chart['Time'],
+        open=df_chart['Open'], high=df_chart['High'],
+        low=df_chart['Low'], close=df_chart['Close'],
+        increasing_line_color='#2ecc71', # Green
+        decreasing_line_color='#ff5252'  # Red
+    )])
+    
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#000000", # Pure Black
+        plot_bgcolor="#000000",
+        height=500,
+        margin=dict(t=30, b=20, l=0, r=40),
+        xaxis_rangeslider_visible=False,
+        showlegend=False,
+        xaxis=dict(showgrid=False), # No Gridlines (Cleaner)
+        yaxis=dict(showgrid=True, gridcolor='#222', side='right') # Price on Right
+    )
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 with col2:
-    # ORDER PANEL
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("Place Order")
+    # 5. ORDER PANEL
+    st.markdown("<div style='background-color:#111; padding:15px; border-radius:8px; border:1px solid #333;'>", unsafe_allow_html=True)
+    st.subheader("Order")
     with st.form("trade"):
         qty = st.number_input("Lots", 1, 100, 1)
-        action = st.radio("Side", ["BUY", "SELL"], horizontal=True)
+        action = st.radio("Action", ["BUY", "SELL"], horizontal=True)
         
-        lot = ASSETS_INFO.get(selected, 1)
+        lot = ASSETS_INFO[selected]['lot']
         val = current_price * qty * lot
         
-        st.markdown("---")
         st.markdown(f"**Margin:** ₹{val:,.0f}")
-        st.caption(f"Lot Size: {lot} | Brokerage: ₹500")
+        st.caption(f"Lot: {lot} | Brokerage: ₹500")
         
-        if st.form_submit_button("⚡ EXECUTE"):
+        if st.form_submit_button("PLACE ORDER"):
             cost = val + 500.0 if action == "BUY" else val - 500.0
             if action == "BUY" and st.session_state.balance < cost:
                 st.error("Insufficient Funds")
@@ -238,21 +282,20 @@ with col2:
                 new_bal = st.session_state.balance - cost if action == "BUY" else st.session_state.balance + cost
                 st.session_state.balance = new_bal
                 
-                # Update Cloud
+                # Update DB
                 update_db_balance(st.session_state.user, new_bal)
                 log_trade_db({
                     'Time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'User': st.session_state.user,
                     'Symbol': selected, 'Action': action, 'Qty': qty, 'Price': current_price, 'Value': val
                 })
                 update_portfolio_db(st.session_state.user, selected, qty, current_price, action)
-                
-                st.success("Trade Executed!")
+                st.success("Executed")
                 time.sleep(0.5)
                 st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 9. POSITIONS ---
-st.markdown("### 💼 Open Positions")
+# --- 9. PORTFOLIO TABLE ---
+st.markdown("### Positions")
 try:
     df_port = pd.DataFrame(connect_db().worksheet("Portfolio").get_all_records())
 except: df_port = pd.DataFrame()
@@ -263,26 +306,29 @@ if not df_port.empty:
         total_pnl = 0.0
         rows = ""
         for _, row in my_port.iterrows():
-            ltp = st.session_state.prices.get(row['Symbol'], 0)
-            pnl = (ltp - row['Avg_Price']) * row['Qty'] * ASSETS_INFO.get(row['Symbol'], 1)
+            sym = row['Symbol']
+            # Fallback if symbol isn't in current asset list (e.g. old trades)
+            ltp = st.session_state.prices.get(sym, row['Avg_Price'])
+            
+            pnl = (ltp - row['Avg_Price']) * row['Qty'] * ASSETS_INFO.get(sym, {'lot':1})['lot']
             total_pnl += pnl
             
-            color = "metric-up" if pnl >= 0 else "metric-down"
+            color = "text-green" if pnl >= 0 else "text-red"
             rows += f"""
-                <tr style="border-bottom:1px solid #333">
-                    <td>{row['Symbol']}</td><td>{row['Qty']}</td><td>{row['Avg_Price']}</td><td>{ltp:,.2f}</td><td class='{color}'>{pnl:,.2f}</td>
+                <tr style="border-bottom:1px solid #222;">
+                    <td>{sym}</td><td>{row['Qty']}</td><td>{row['Avg_Price']}</td>
+                    <td class='{color}'>{pnl:,.2f}</td>
                 </tr>
             """
         
         st.markdown(f"""
-            <table>
-                <tr><th>Script</th><th>Qty</th><th>Avg</th><th>LTP</th><th>P&L</th></tr>
+            <table style="width:100%; background-color:#111;">
+                <tr style="color:#888;"><th>Script</th><th>Qty</th><th>Avg</th><th>P&L</th></tr>
                 {rows}
             </table>
-            <div style="margin-top:20px; padding:15px; background:#161616; text-align:center;">
-                <span style="color:#888">TOTAL P&L</span><br>
-                <span style="font-size:28px" class="{'metric-up' if total_pnl>=0 else 'metric-down'}">₹{total_pnl:,.2f}</span>
+            <div style="margin-top:10px; padding:10px; background:#111; text-align:center;">
+                <span class='{ "text-green" if total_pnl>=0 else "text-red" }' style="font-size:24px; font-weight:bold;">
+                    TOTAL P&L: ₹{total_pnl:,.2f}
+                </span>
             </div>
         """, unsafe_allow_html=True)
-    else: st.info("No Active Trades")
-else: st.info("No Active Trades")
