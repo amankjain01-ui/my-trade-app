@@ -5,27 +5,39 @@ import time
 import random
 import gspread
 from google.oauth2.service_account import Credentials
+import plotly.graph_objects as go
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="ProTrade Live", layout="wide", page_icon="⚡")
+st.set_page_config(page_title="ProTrade Max", layout="wide", page_icon="🚀")
 BROKERAGE_PER_ORDER = 500.0 
 
-# --- CONNECT TO GOOGLE SHEETS ---
+# --- ASSET DATABASE (Global Proxies for MCX) ---
+# Format: "Name": {"ticker": "YahooSymbol", "lot_size": MCX_Lot_Size}
+ASSETS = {
+    "Gold":        {"ticker": "GC=F", "lot": 100},
+    "Silver":      {"ticker": "SI=F", "lot": 30},
+    "Crude Oil":   {"ticker": "CL=F", "lot": 100},
+    "Natural Gas": {"ticker": "NG=F", "lot": 1250},
+    "Copper":      {"ticker": "HG=F", "lot": 2500},
+    "Zinc":        {"ticker": "ZNc1", "lot": 5000}, # ZNc1 often tricky on Yahoo, using simul if fails
+    "Aluminum":    {"ticker": "ALI=F", "lot": 5000},
+    "Lead":        {"ticker": "Pb=F", "lot": 5000}
+}
+
+# --- CONNECT TO DATABASE ---
 def connect_db():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
         client = gspread.authorize(creds)
-        # !!! CHANGE THIS TO YOUR EXACT SHEET NAME !!!
         return client.open("My Trade DB")
     except Exception as e:
-        st.error(f"Connection Error: {e}")
+        st.error(f"Database Error: {e}")
         st.stop()
 
-# --- DATABASE FUNCTIONS ---
+# --- FETCH & UPDATE FUNCTIONS ---
 def get_users():
-    try:
-        return pd.DataFrame(connect_db().worksheet("Users").get_all_records())
+    try: return pd.DataFrame(connect_db().worksheet("Users").get_all_records())
     except: return pd.DataFrame()
 
 def update_user_balance(username, new_balance):
@@ -47,120 +59,205 @@ def update_portfolio(user, symbol, qty, price, action):
     if not df.empty and key in df['User_Symbol'].values:
         row_idx = df.index[df['User_Symbol'] == key][0] + 2
         curr_qty = df.iloc[df.index[df['User_Symbol'] == key][0]]['Qty']
-        new_qty = curr_qty + qty if action == "BUY" else curr_qty - qty
+        
+        if action == "BUY": new_qty = curr_qty + qty
+        else: new_qty = curr_qty - qty
         
         if new_qty <= 0: ws.delete_rows(int(row_idx))
-        else: ws.update_cell(int(row_idx), 4, int(new_qty)) # Col 4 is Qty
+        else: ws.update_cell(int(row_idx), 4, int(new_qty))
     elif action == "BUY":
-        # New Position: Key, User, Symbol, Qty, AvgPrice
         ws.append_row([key, user, symbol, qty, price])
 
-# --- 🔥 LIVE PRICE SIMULATION ---
-def get_live_price(ticker):
+# --- LIVE PRICE & CHART ENGINE ---
+def get_live_data(symbol):
+    ticker = ASSETS[symbol]["ticker"]
     try:
-        data = yf.Ticker(ticker).history(period="1d")
-        if data.empty: return 0.0
-        base = data['Close'].iloc[-1]
-        # Add fake volatility (±0.05%) to make it look alive
-        noise = base * 0.0005 
-        live_price = base + random.uniform(-noise, noise)
-        return round(live_price, 2)
-    except: return 0.0
+        # Get Intraday data for Chart
+        data = yf.download(ticker, period="1d", interval="15m", progress=False)
+        if data.empty: return 0.0, None
+        
+        # Current Price
+        base_price = data['Close'].iloc[-1].item() # .item() converts numpy to float
+        
+        # Add "Simulation Noise" to keep it ticking
+        noise = base_price * 0.0003 
+        live_price = base_price + random.uniform(-noise, noise)
+        
+        return round(live_price, 2), data
+    except:
+        return 0.0, None
 
-# --- APP START ---
+def render_chart(symbol, data):
+    if data is None or data.empty:
+        st.warning("Chart data unavailable")
+        return
+        
+    fig = go.Figure(data=[go.Candlestick(
+        x=data.index,
+        open=data['Open'],
+        high=data['High'],
+        low=data['Low'],
+        close=data['Close'],
+        name=symbol
+    )])
+    fig.update_layout(
+        title=f"{symbol} Intraday Chart",
+        yaxis_title="Price (USD)",
+        xaxis_title="Time",
+        template="plotly_dark",
+        height=400,
+        margin=dict(l=0, r=0, t=30, b=0)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# --- APP LOGIN ---
 if 'user' not in st.session_state:
-    st.title("🔐 ProTrade Login")
+    st.title("🔐 ProTrade Max Login")
     u = st.text_input("Username")
     p = st.text_input("Password", type="password")
     if st.button("Login"):
         df = get_users()
         if not df.empty and u in df['Username'].values:
             user_row = df[df['Username'] == u].iloc[0]
-            # Convert to string to avoid format errors
             if str(user_row['Password']) == str(p) and str(user_row['Active']).upper() == 'TRUE':
                 st.session_state.user = u
                 st.session_state.role = user_row['Role']
                 st.session_state.balance = float(user_row['Balance'])
                 st.rerun()
-            else: st.error("Wrong Password or Account Inactive")
+            else: st.error("Access Denied")
         else: st.error("User Not Found")
     st.stop()
 
-# --- SIDEBAR MENU ---
+# --- SIDEBAR ---
 st.sidebar.title(f"👤 {st.session_state.user}")
+st.sidebar.caption(f"Wallet: ₹{st.session_state.balance:,.0f}")
 if st.sidebar.button("Logout"):
-    for k in list(st.session_state.keys()): del st.session_state[k]
+    st.session_state.clear()
     st.rerun()
 
-# --- ADMIN PANEL ---
-if st.session_state.role == 'MASTER':
-    st.title("👑 Master Admin Panel")
-    tab1, tab2 = st.tabs(["👥 User Database", "📜 Trade Logs"])
-    with tab1:
-        st.dataframe(get_users())
-        st.info("💡 To add money or users, edit the Google Sheet directly.")
-    with tab2:
-        if st.button("Refresh Logs"):
-            st.dataframe(pd.DataFrame(connect_db().worksheet("Orders").get_all_records()))
+# --- MAIN APP ---
+st.title("🚀 ProTrade Terminal")
 
-# --- TRADING TERMINAL ---
-else:
-    st.title("📈 ProTrade Terminal")
-    
-    # Refresh logic to simulate ticks
-    if st.button("🔄 Refresh Market"):
-        st.rerun()
+# Tabs for Organization
+tab1, tab2 = st.tabs(["📈 Trade & Charts", "💼 Live Portfolio (P&L)"])
 
-    # Metrics
-    col1, col2 = st.columns(2)
-    col1.metric("💰 Wallet Balance", f"₹{st.session_state.balance:,.2f}")
+# === TAB 1: TRADING ===
+with tab1:
+    col1, col2 = st.columns([1, 2])
     
-    # Market Watch
-    commodities = {"Gold": "GC=F", "Crude Oil": "CL=F", "Silver": "SI=F"}
-    selected = st.selectbox("Select Asset", list(commodities.keys()))
-    
-    # Price Conversion
-    usd_price = get_live_price(commodities[selected])
-    inr_price = usd_price * 83.50 # Approx USD-INR rate
-    
-    st.metric(label=f"⚡ {selected} LIVE", value=f"₹{inr_price:,.2f}")
-    
-    # Order Form
-    c1, c2 = st.columns(2)
-    qty = c1.number_input("Lots", 1, 100)
-    action = c2.radio("Action", ["BUY", "SELL"], horizontal=True)
-    
-    trade_val = inr_price * qty
-    total_cost = trade_val + BROKERAGE_PER_ORDER if action == "BUY" else trade_val - BROKERAGE_PER_ORDER
-    
-    st.info(f"Price: ₹{trade_val:,.0f} | Brokerage: ₹500 | **Net: ₹{total_cost:,.0f}**")
+    with col1:
+        st.subheader("Market Watch")
+        selected_asset = st.selectbox("Select Script", list(ASSETS.keys()))
+        
+        # Get Data
+        usd_price, chart_data = get_live_data(selected_asset)
+        inr_price = usd_price * 84.0 # Fixed USD-INR multiplier
+        
+        st.metric(label=f"{selected_asset} LIVE", value=f"₹{inr_price:,.2f}")
+        
+        # Order Form
+        with st.form("order_form"):
+            qty = st.number_input("Lots", 1, 50, 1)
+            action = st.radio("Action", ["BUY", "SELL"], horizontal=True)
+            
+            lot_size = ASSETS[selected_asset]["lot"]
+            trade_value = inr_price * qty * lot_size
+            
+            st.write(f"Lot Size: {lot_size}")
+            st.write(f"**Total Value: ₹{trade_value:,.0f}**")
+            
+            submitted = st.form_submit_button("⚡ EXECUTE TRADE")
+            
+            if submitted:
+                # Calc Charges
+                total_cost = trade_value + BROKERAGE_PER_ORDER if action == "BUY" else trade_value - BROKERAGE_PER_ORDER
+                
+                if action == "BUY" and st.session_state.balance < total_cost:
+                    st.error("Insufficient Funds")
+                else:
+                    new_bal = st.session_state.balance - total_cost if action == "BUY" else st.session_state.balance + total_cost
+                    
+                    # Update DB
+                    update_user_balance(st.session_state.user, new_bal)
+                    log_trade({
+                        'Time': time.strftime("%Y-%m-%d %H:%M:%S"),
+                        'User': st.session_state.user,
+                        'Symbol': selected_asset,
+                        'Action': action,
+                        'Qty': qty,
+                        'Price': inr_price,
+                        'Value': trade_value,
+                        'Brokerage': BROKERAGE_PER_ORDER
+                    })
+                    update_portfolio(st.session_state.user, selected_asset, qty, inr_price, action)
+                    
+                    st.session_state.balance = new_bal
+                    st.success("Trade Executed!")
+                    time.sleep(1)
+                    st.rerun()
 
-    if st.button("⚡ EXECUTE TRADE"):
-        if action == "BUY" and st.session_state.balance < total_cost:
-            st.error("Insufficient Funds!")
-        else:
-            new_bal = st.session_state.balance - total_cost if action == "BUY" else st.session_state.balance + total_cost
-            
-            # 1. Update Cloud Balance
-            update_user_balance(st.session_state.user, new_bal)
-            
-            # 2. Log Trade
-            log_trade({
-                'Time': time.strftime("%Y-%m-%d %H:%M:%S"),
-                'User': st.session_state.user,
-                'Symbol': selected,
-                'Action': action,
-                'Qty': qty,
-                'Price': inr_price,
-                'Value': trade_val,
-                'Brokerage': BROKERAGE_PER_ORDER
-            })
-            
-            # 3. Update Portfolio
-            update_portfolio(st.session_state.user, selected, qty, inr_price, action)
-            
-            st.session_state.balance = new_bal
-            st.success("✅ Trade Successful!")
-            time.sleep(1)
+    with col2:
+        st.subheader("Live Chart")
+        render_chart(selected_asset, chart_data)
+        if st.button("🔄 Refresh Data"):
             st.rerun()
-      
+
+# === TAB 2: LIVE PORTFOLIO ===
+with tab2:
+    st.subheader("💼 Open Positions & P&L")
+    
+    # 1. Fetch Portfolio from Sheet
+    try:
+        ws = connect_db().worksheet("Portfolio")
+        data = ws.get_all_records()
+        df_port = pd.DataFrame(data)
+    except: df_port = pd.DataFrame()
+
+    if df_port.empty:
+        st.info("No open positions.")
+    else:
+        # Filter for current user
+        my_port = df_port[df_port['User'] == st.session_state.user]
+        
+        if my_port.empty:
+            st.info("No open positions.")
+        else:
+            total_pnl = 0.0
+            
+            # Create a display table
+            pnl_data = []
+            
+            for index, row in my_port.iterrows():
+                symbol = row['Symbol']
+                buy_price = float(row['Avg_Price'])
+                qty = int(row['Qty'])
+                lot_size = ASSETS.get(symbol, {}).get("lot", 1)
+                
+                # Fetch Current Price Live
+                curr_usd, _ = get_live_data(symbol)
+                curr_inr = curr_usd * 84.0
+                
+                # Calc P&L
+                # Formula: (Current - Buy) * Qty * LotSize
+                pnl = (curr_inr - buy_price) * qty * lot_size
+                total_pnl += pnl
+                
+                pnl_data.append({
+                    "Script": symbol,
+                    "Qty (Lots)": qty,
+                    "Buy Price": f"₹{buy_price:,.2f}",
+                    "Curr Price": f"₹{curr_inr:,.2f}",
+                    "P&L": pnl
+                })
+            
+            # Show Table
+            st.dataframe(pd.DataFrame(pnl_data).style.format({"P&L": "₹{:.2f}"}))
+            
+            # Show Total Big Metric
+            color = "normal"
+            if total_pnl > 0: color = "normal" # Streamlit handles green/red in metric delta automatically
+            
+            st.metric(label="TOTAL UNREALIZED P&L", value=f"₹{total_pnl:,.2f}", delta=total_pnl)
+            
+            if st.button("🔄 Update P&L"):
+                st.rerun()
