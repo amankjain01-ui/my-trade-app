@@ -278,4 +278,22 @@ with t1:
             my = df[df['User'] == st.session_state.user]
             if not my.empty:
                 rows = ""
-                tpnl = 0
+                tpnl = 0.0
+                for _, r in my.iterrows():
+                    ltp = st.session_state.prices.get(r['Symbol'], r['Avg_Price'])
+                    ls = ASSETS.get(r['Symbol'], {'lot':1})['lot']
+                    pnl = (ltp - r['Avg_Price']) * r['Qty'] * ls
+                    tpnl += pnl
+                    c = "up" if pnl >= 0 else "down"
+                    rows += f"<tr><td>{r['Symbol']}</td><td>{r['Qty']}</td><td>{r['Avg_Price']:.2f}</td><td class='{c}'>{pnl:,.2f}</td></tr>"
+                st.markdown(f"<table><tr><th>ASSET</th><th>QTY</th><th>AVG</th><th>P&L</th></tr>{rows}</table>", unsafe_allow_html=True)
+                st.markdown(f"<h3 style='text-align:center' class='{'up' if tpnl>=0 else 'down'}'>TOTAL P&L: ₹{tpnl:,.2f}</h3>", unsafe_allow_html=True)
+            else: st.info("No Positions")
+        else: st.info("No Positions")
+    except: pass
+
+with t2:
+    if st.session_state.pending:
+        st.dataframe(pd.DataFrame(st.session_state.pending)[['Symbol', 'Action', 'Type', 'Price', 'Qty']], use_container_width=True)
+        if st.button("CANCEL ALL"): st.session_state.pending = []; st.rerun()
+    else: st.info("No Pending Orders")
