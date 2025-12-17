@@ -13,7 +13,7 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(
     page_title="Dabba Gul Pro", 
     layout="wide", 
-    page_icon="🎯",
+    page_icon="📦",
     initial_sidebar_state="expanded"
 )
 
@@ -43,18 +43,21 @@ if 'balance' not in st.session_state:
     st.session_state.balance = 0.0
 if 'user' not in st.session_state:
     st.session_state.user = None
+
+# *** EXACT PRICES FROM YOUR MCX SCREENSHOT ***
 if 'prices' not in st.session_state:
-    # DEFAULT STARTING PRICES (You can edit these in sidebar)
     st.session_state.prices = {
-        "Gold": 76500.00,
-        "Silver": 91250.00,
-        "Crude Oil": 5950.00,
-        "Natural Gas": 245.00,
-        "Copper": 860.00,
-        "Zinc": 275.00,
-        "Nifty 50": 24100.00,
-        "Bank Nifty": 51200.00
+        "Gold": 134278.00,      # Matched your screenshot
+        "Silver": 204240.00,    # Matched your screenshot
+        "Crude Oil": 5098.00,   # Matched your screenshot
+        "Natural Gas": 356.70,  # Matched your screenshot
+        "Copper": 1109.80,      # Matched your screenshot
+        "Zinc": 303.30,         # Matched your screenshot
+        "Lead": 180.60,         # Matched your screenshot
+        "Nifty 50": 24145.00,   # Standard Nifty
+        "Bank Nifty": 51095.00  # Standard Bank Nifty
     }
+
 if 'history' not in st.session_state:
     st.session_state.history = {}
 
@@ -120,16 +123,16 @@ def update_portfolio_db(user, symbol, qty, price, action):
             ws.append_row([key, user, symbol, qty, price])
     except: pass
 
-# --- 6. LOT SIZES ---
+# --- 6. LOT SIZES (Standard) ---
 ASSETS_INFO = {
-    "Gold": 100, "Silver": 30, "Crude Oil": 100, 
-    "Natural Gas": 1250, "Copper": 2500, "Zinc": 5000,
+    "Gold": 1, "Silver": 1, "Crude Oil": 100, 
+    "Natural Gas": 1250, "Copper": 2500, "Zinc": 5000, "Lead": 5000,
     "Nifty 50": 50, "Bank Nifty": 15
 }
 
 # --- 7. LOGIN SCREEN ---
 if st.session_state.user is None:
-    st.markdown("<br><br><h1 style='text-align:center; color:#2ecc71'>🎯 Dabba Gul Pro</h1>", unsafe_allow_html=True)
+    st.markdown("<br><br><h1 style='text-align:center; color:#e74c3c'>📦 Dabba Gul Pro</h1>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         with st.form("login"):
@@ -148,32 +151,30 @@ if st.session_state.user is None:
     st.stop()
 
 # --- 8. MAIN DASHBOARD ---
-# Auto-Refresh (Updates app every 1 second)
 st_autorefresh(interval=1000, key="data_refresh")
 
-# --- SIDEBAR (CALIBRATION & WATCHLIST) ---
+# --- SIDEBAR (CALIBRATION) ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
     
-    with st.expander("⚙️ PRICE CALIBRATION (Admin)", expanded=True):
-        st.caption("Set Real Prices Here:")
+    st.info("💡 TIP: If prices are different on TV, Type the new price below to fix it.")
+    
+    with st.expander("⚙️ SET PRICES (Calibration)", expanded=True):
         for sym in st.session_state.prices:
-            # Let user update the base price manually
+            # The Admin can type the real price here if it changes
             new_val = st.number_input(f"{sym}", value=float(st.session_state.prices[sym]), step=1.0, format="%.2f")
-            # Only update if changed significantly (to avoid overriding ticks)
-            if abs(new_val - st.session_state.prices[sym]) > 5:
+            if abs(new_val - st.session_state.prices[sym]) > 0.01:
                 st.session_state.prices[sym] = new_val
 
     st.markdown("---")
-    st.caption("LIVE WATCHLIST")
+    st.caption("WATCHLIST")
     for sym, price in st.session_state.prices.items():
-        change = random.choice(["+0.05%", "-0.02%", "+0.12%", "-0.08%"])
+        change = random.choice(["+0.23%", "-0.10%", "+3.28%", "+0.53%"])
         color = "#2ecc71" if "+" in change else "#ff5252"
         c1, c2 = st.columns([2, 1.5])
         c1.markdown(f"**{sym}**")
         c2.markdown(f"<span style='color:{color}'>₹{price:,.0f}</span>", unsafe_allow_html=True)
     
-    st.markdown("---")
     if st.button("LOGOUT"):
         st.session_state.clear()
         st.rerun()
@@ -195,20 +196,18 @@ st.markdown(f"""
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    # 1. ASSET SELECTOR
+    # ASSET SELECTOR
     selected = st.selectbox("Select Asset", list(st.session_state.prices.keys()), label_visibility="collapsed")
     current_price = st.session_state.prices[selected]
     
-    # 2. BIG PRICE
+    # BIG PRICE DISPLAY
     st.markdown(f"<div class='big-price'>₹{current_price:,.2f}</div>", unsafe_allow_html=True)
     
-    # 3. CHART (Auto-Generated)
+    # CHART
     if selected in st.session_state.history:
         data = st.session_state.history[selected]
-        # Convert to DataFrame for Plotly
         df_chart = pd.DataFrame({'Price': data['prices'], 'Time': data['times']})
         
-        # Simple Line Chart for speed
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df_chart['Time'], y=df_chart['Price'], mode='lines', 
                                  line=dict(color='#2ecc71', width=2), fill='tozeroy', fillcolor='rgba(46, 204, 113, 0.1)'))
@@ -217,7 +216,7 @@ with col1:
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 with col2:
-    # 4. ORDER PANEL
+    # ORDER PANEL
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.subheader("Place Order")
     with st.form("trade"):
@@ -252,7 +251,7 @@ with col2:
                 st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 9. PORTFOLIO & P&L ---
+# --- 9. POSITIONS ---
 st.markdown("### 💼 Open Positions")
 try:
     df_port = pd.DataFrame(connect_db().worksheet("Portfolio").get_all_records())
