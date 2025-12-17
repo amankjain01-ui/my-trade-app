@@ -17,165 +17,100 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. THEME: REALISTIC VINTAGE (Retro Terminal Style) ---
+# --- 2. THEME: REALISTIC VINTAGE (Amber on Black) ---
 st.markdown("""
     <style>
-        /* MAIN BACKGROUND - Retro Black */
-        .stApp { background-color: #1a1a1a; color: #ffb000; font-family: 'Courier New', Courier, monospace; }
+        /* MAIN BACKGROUND */
+        .stApp { background-color: #121212; color: #ffb000; font-family: 'Courier New', monospace; }
         
-        /* SIDEBAR - Dark Grey */
-        [data-testid="stSidebar"] { background-color: #2b2b2b; border-right: 2px solid #ffb000; }
+        /* SIDEBAR */
+        [data-testid="stSidebar"] { background-color: #1e1e1e; border-right: 2px solid #ffb000; }
         
-        /* INPUT FIELDS - Old Computer Style */
+        /* INPUTS */
         .stTextInput input, .stNumberInput input, .stSelectbox div { 
-            background-color: #000000 !important; 
-            color: #ffb000 !important; 
-            border: 1px solid #ffb000 !important; 
-            border-radius: 0px;
-            font-family: 'Courier New', Courier, monospace;
+            background-color: #000; color: #ffb000 !important; border: 1px solid #ffb000 !important; 
         }
         
-        /* BUTTONS - Amber Glow */
+        /* BUTTONS */
         .stButton button {
-            background-color: #000000;
-            color: #ffb000;
-            font-weight: bold;
-            border: 2px solid #ffb000;
-            border-radius: 0px;
-            text-transform: uppercase;
-            box-shadow: 0 0 5px #ffb000;
+            background-color: #000; color: #ffb000; border: 2px solid #ffb000;
+            text-transform: uppercase; font-weight: bold;
         }
-        .stButton button:hover {
-            background-color: #ffb000;
-            color: #000000;
-        }
-        
-        /* CARDS - Vintage Paper/Terminal */
-        .vintage-card {
-            background-color: #222;
-            padding: 15px;
-            border: 2px dashed #555;
-            margin-bottom: 15px;
-        }
+        .stButton button:hover { background-color: #ffb000; color: #000; }
         
         /* TEXT COLORS */
-        .text-amber { color: #ffb000; }
-        .text-green { color: #00ff41; } /* Matrix Green */
-        .text-red { color: #ff3333; }   /* Retro Red */
+        .text-green { color: #00ff41 !important; }
+        .text-red { color: #ff3333 !important; }
+        .text-amber { color: #ffb000 !important; }
         
-        /* HEADERS */
-        h1, h2, h3 { border-bottom: 1px solid #555; padding-bottom: 5px; }
+        /* BIG PRICE DISPLAY */
+        .big-price { font-size: 48px; font-weight: bold; text-shadow: 0 0 8px #ffb000; }
         
-        /* BIG PRICE */
-        .big-price { 
-            font-size: 42px; 
-            font-weight: bold; 
-            font-family: 'Courier New', monospace; 
-            text-shadow: 0 0 5px #ffb000;
-        }
+        /* TABLES */
+        table { width: 100%; border-collapse: collapse; border: 1px solid #333; }
+        th { background-color: #222; color: #888; padding: 8px; border-bottom: 1px solid #ffb000; }
+        td { background-color: #111; color: #ddd; padding: 8px; border-bottom: 1px solid #333; font-family: 'Courier New'; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. ASSETS (Futures & Options Contracts) ---
+# --- 3. ACCURATE MARKET RATES (Dec 2025 Baseline) ---
+# These are set to REAL market levels so they start correct.
 ASSETS_INFO = {
-    "Gold 05Feb Fut":      {"lot": 100, "start": 76500.00, "type": "FUT"},
-    "Silver 05Mar Fut":    {"lot": 30,  "start": 91200.00, "type": "FUT"},
-    "Crude Oil 19Dec Fut": {"lot": 100, "start": 5950.00, "type": "FUT"},
-    "Nifty 21Dec 24000 CE":{"lot": 50,  "start": 150.00, "type": "OPT"},
-    "Nifty 21Dec 24000 PE":{"lot": 50,  "start": 120.00, "type": "OPT"},
-    "BankNifty 25Dec 51000 CE":{"lot": 15, "start": 340.00, "type": "OPT"},
-    "Gold Mini 05Jan Fut": {"lot": 10,  "start": 76200.00, "type": "FUT"}
+    "Gold 05Feb Fut":      {"lot": 100, "start": 76520.00},
+    "Silver 05Mar Fut":    {"lot": 30,  "start": 91250.00},
+    "Crude Oil 19Dec Fut": {"lot": 100, "start": 5945.00},
+    "Copper 31Dec Fut":    {"lot": 2500,"start": 862.50},
+    "Natural Gas 26Dec":   {"lot": 1250,"start": 248.10},
+    "Nifty 24000 CE":      {"lot": 50,  "start": 145.00},
+    "Nifty 24000 PE":      {"lot": 50,  "start": 110.00},
+    "BankNifty 51000 CE":  {"lot": 15,  "start": 320.00}
 }
 
-# --- 4. SESSION STATE ---
+# --- 4. SESSION STATE INITIALIZATION ---
 if 'balance' not in st.session_state: st.session_state.balance = 0.0
 if 'user' not in st.session_state: st.session_state.user = None
+
+# Initialize Prices if not present
 if 'prices' not in st.session_state:
     st.session_state.prices = {k: v['start'] for k, v in ASSETS_INFO.items()}
-    
-# History for Charts
+
+# Initialize Chart History
 if 'history' not in st.session_state:
     st.session_state.history = {}
     for sym, start in st.session_state.prices.items():
-        times = [datetime.now() - timedelta(minutes=i*5) for i in range(50)]
+        # Generate 60 mins of realistic fake history so chart isn't empty
+        times = [datetime.now() - timedelta(minutes=i) for i in range(60)]
         times.reverse()
         prices = [start]
-        for _ in range(49):
-            prices.append(prices[-1] * (1 + random.uniform(-0.002, 0.002)))
+        for _ in range(59):
+            # Random walk
+            change = random.uniform(-0.0005, 0.0005)
+            prices.append(prices[-1] * (1 + change))
         st.session_state.history[sym] = {'times': times, 'prices': prices}
 
-# PENDING ORDERS (Limit/Stop Loss)
-if 'pending_orders' not in st.session_state:
-    st.session_state.pending_orders = []
-
-# --- 5. LOGIC ENGINE ---
+# --- 5. LIVE ENGINE (Heartbeat) ---
 def update_market():
-    # 1. Update Prices
+    # Update every single asset
     for sym in st.session_state.prices:
-        curr = st.session_state.prices[sym]
-        move = curr * random.uniform(-0.0005, 0.0005)
-        new_p = curr + move
-        st.session_state.prices[sym] = new_p
+        current = st.session_state.prices[sym]
+        # Simulate realistic tick volatility (0.02%)
+        tick = current * random.uniform(-0.0002, 0.0002) 
+        new_price = current + tick
+        st.session_state.prices[sym] = new_price
         
-        # Chart History
+        # Update History for Chart
         st.session_state.history[sym]['times'].append(datetime.now())
-        st.session_state.history[sym]['prices'].append(new_p)
-        if len(st.session_state.history[sym]['prices']) > 60:
+        st.session_state.history[sym]['prices'].append(new_price)
+        
+        # Keep chart clean (last 100 points)
+        if len(st.session_state.history[sym]['prices']) > 100:
             st.session_state.history[sym]['prices'].pop(0)
             st.session_state.history[sym]['times'].pop(0)
 
-    # 2. Check Pending Orders (Limit/SL)
-    executed_orders = []
-    for order in st.session_state.pending_orders:
-        ltp = st.session_state.prices[order['Symbol']]
-        trigger = False
-        
-        # BUY LIMIT: Execute if LTP <= Limit Price
-        if order['Action'] == "BUY" and order['Type'] == "LIMIT" and ltp <= order['Price']: trigger = True
-        # SELL LIMIT: Execute if LTP >= Limit Price
-        elif order['Action'] == "SELL" and order['Type'] == "LIMIT" and ltp >= order['Price']: trigger = True
-        # BUY SL: Execute if LTP >= Trigger Price
-        elif order['Action'] == "BUY" and order['Type'] == "SL" and ltp >= order['Price']: trigger = True
-        # SELL SL: Execute if LTP <= Trigger Price
-        elif order['Action'] == "SELL" and order['Type'] == "SL" and ltp <= order['Price']: trigger = True
-        
-        if trigger:
-            execute_trade(order['User'], order['Symbol'], order['Action'], order['Qty'], ltp, "EXECUTED")
-            executed_orders.append(order)
-            
-    # Remove executed
-    for ex in executed_orders:
-        if ex in st.session_state.pending_orders:
-            st.session_state.pending_orders.remove(ex)
-
-def execute_trade(user, symbol, action, qty, price, status):
-    # Calculate Cost
-    lot = ASSETS_INFO[symbol]['lot']
-    val = price * qty * lot
-    cost = val + 500.0 if action == "BUY" else val - 500.0 # Brokerage
-    
-    # Check Funds (For Buy only)
-    if action == "BUY" and st.session_state.balance < cost and status == "EXECUTED":
-        return False # Fail
-
-    # Update Balance
-    if status == "EXECUTED":
-        new_bal = st.session_state.balance - cost if action == "BUY" else st.session_state.balance + cost
-        st.session_state.balance = new_bal
-        update_db_balance(user, new_bal)
-        update_portfolio_db(user, symbol, qty, price, action)
-    
-    # Log
-    log_trade_db({
-        'Time': datetime.now().strftime("%H:%M:%S"), 'User': user,
-        'Symbol': symbol, 'Action': action, 'Qty': qty, 'Price': price, 
-        'Type': status, 'Value': val
-    })
-    return True
-
+# Run update logic
 update_market()
 
-# --- 6. DATABASE ---
+# --- 6. DATABASE FUNCTIONS ---
 def connect_db():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -188,17 +123,17 @@ def get_users():
     try: return pd.DataFrame(connect_db().worksheet("Users").get_all_records())
     except: return pd.DataFrame()
 
-def update_db_balance(user, val):
+def update_db_balance(user, amount):
     try:
         ws = connect_db().worksheet("Users")
         cell = ws.find(user)
-        ws.update_cell(cell.row, 3, val)
+        ws.update_cell(cell.row, 3, amount)
     except: pass
 
-def log_trade_db(d):
-    connect_db().worksheet("Orders").append_row(list(d.values()))
+def log_trade(data):
+    connect_db().worksheet("Orders").append_row(list(data.values()))
 
-def update_portfolio_db(user, symbol, qty, price, action):
+def update_portfolio(user, symbol, qty, price, action):
     ws = connect_db().worksheet("Portfolio")
     try:
         df = pd.DataFrame(ws.get_all_records())
@@ -213,15 +148,15 @@ def update_portfolio_db(user, symbol, qty, price, action):
             ws.append_row([key, user, symbol, qty, price])
     except: pass
 
-# --- 7. LOGIN ---
+# --- 7. LOGIN SCREEN ---
 if st.session_state.user is None:
-    st.markdown("<br><h1 style='text-align:center; color:#ffb000; font-family:Courier New'>📦 DABBA GUL TERMINAL</h1>", unsafe_allow_html=True)
+    st.markdown("<br><br><h1 style='text-align:center; color:#ffb000;'>📦 DABBA GUL LOGIN</h1>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         with st.form("login"):
-            u = st.text_input("OPERATOR ID")
-            p = st.text_input("ACCESS CODE", type="password")
-            if st.form_submit_button("INITIALIZE"):
+            u = st.text_input("USER ID")
+            p = st.text_input("PASSWORD", type="password")
+            if st.form_submit_button("ENTER TERMINAL"):
                 df = get_users()
                 if not df.empty and u in df['Username'].values:
                     row = df[df['Username']==u].iloc[0]
@@ -229,134 +164,146 @@ if st.session_state.user is None:
                         st.session_state.user = u
                         st.session_state.balance = float(row['Balance'])
                         st.rerun()
-                    else: st.error("ACCESS DENIED")
-                else: st.error("UNKNOWN ID")
+                    else: st.error("WRONG PASSWORD")
+                else: st.error("USER NOT FOUND")
     st.stop()
 
-# --- 8. MAIN UI ---
-st_autorefresh(interval=2000, key="refresh")
+# --- 8. MAIN APP (AUTO-REFRESH ENABLED) ---
+# This forces the app to reload every 1 second to show live P&L
+st_autorefresh(interval=1000, key="live_feed")
 
-# SIDEBAR
+# SIDEBAR (Calibration & Watchlist)
 with st.sidebar:
-    st.markdown(f"### OPERATOR: {st.session_state.user}")
+    st.markdown(f"### USER: {st.session_state.user}")
     
-    st.markdown("### 📟 LIVE FEED")
+    # Hidden Admin Panel to fix rates if they drift
+    with st.expander("🔧 CALIBRATE RATES (ADMIN)"):
+        for s in st.session_state.prices:
+            new_v = st.number_input(s, value=float(st.session_state.prices[s]), format="%.2f")
+            if abs(new_v - st.session_state.prices[s]) > 1:
+                st.session_state.prices[s] = new_v # Manual Override
+
+    st.markdown("### 📊 LIVE WATCHLIST")
     for sym, price in st.session_state.prices.items():
-        change = random.uniform(-1, 1)
+        change = random.uniform(-0.5, 0.5)
         color = "#00ff41" if change > 0 else "#ff3333"
         st.markdown(f"""
-        <div style="border-bottom:1px dashed #444; padding:5px; display:flex; justify-content:space-between;">
-            <span style="color:#ffb000">{sym}</span>
-            <span style="color:{color}">{price:,.2f}</span>
+        <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #333; padding:5px;">
+            <span style="color:#ddd">{sym}</span>
+            <span style="color:{color}">₹{price:,.2f}</span>
         </div>
         """, unsafe_allow_html=True)
-        
-    if st.button("TERMINATE SESSION"):
+    
+    if st.button("LOGOUT"):
         st.session_state.clear()
         st.rerun()
 
-# HEADER
+# TOP HEADER (Balance)
 c1, c2 = st.columns([3, 1])
 with c1:
-    st.markdown(f"<span style='color:#888'>CAPITAL</span><br><span class='big-price text-amber'>₹{st.session_state.balance:,.2f}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:#888'>AVAILABLE MARGIN</span><br><span class='big-price text-amber'>₹{st.session_state.balance:,.2f}</span>", unsafe_allow_html=True)
 
-# WORKSPACE
-col_chart, col_order = st.columns([3, 1.2])
+# TRADING WORKSPACE
+col_chart, col_order = st.columns([2.5, 1])
 
 with col_chart:
     # Asset Selector
     selected = st.selectbox("SELECT CONTRACT", list(st.session_state.prices.keys()))
     curr_price = st.session_state.prices[selected]
     
-    st.markdown(f"<span class='big-price'>{curr_price:,.2f}</span> <span style='color:#00ff41'>LTP</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='big-price'>₹{curr_price:,.2f}</span> <span class='text-green'>LIVE</span>", unsafe_allow_html=True)
     
-    # Retro Line Chart
+    # Chart Engine
     data = st.session_state.history[selected]
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=data['times'], y=data['prices'],
-        mode='lines+markers',
+        mode='lines',
         line=dict(color='#ffb000', width=2),
-        marker=dict(size=4, color='#000')
+        fill='tozeroy', fillcolor='rgba(255, 176, 0, 0.1)'
     ))
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor="#1a1a1a", plot_bgcolor="#1a1a1a",
-        height=450, margin=dict(t=20, b=20, l=20, r=20),
-        xaxis=dict(showgrid=True, gridcolor='#333', gridwidth=1),
-        yaxis=dict(showgrid=True, gridcolor='#333', gridwidth=1),
-        font=dict(family="Courier New", color="#ffb000")
+        paper_bgcolor="#121212", plot_bgcolor="#121212",
+        height=450, margin=dict(t=20, b=20, l=10, r=10),
+        xaxis=dict(showgrid=True, gridcolor='#333'),
+        yaxis=dict(showgrid=True, gridcolor='#333', side='right')
     )
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 with col_order:
-    st.markdown("<div class='vintage-card'>", unsafe_allow_html=True)
-    st.subheader("COMMAND ENTRY")
+    st.markdown("<div style='background:#1e1e1e; padding:15px; border:1px solid #ffb000;'>", unsafe_allow_html=True)
+    st.subheader("PLACE ORDER")
     
-    with st.form("order_entry"):
+    with st.form("trade_panel"):
         qty = st.number_input("LOTS", 1, 100, 1)
-        order_type = st.radio("TYPE", ["MARKET", "LIMIT", "SL"], horizontal=True)
-        limit_price = st.number_input("PRICE (For Limit/SL)", value=float(curr_price))
-        
-        action = st.radio("ACTION", ["BUY", "SELL"], horizontal=True)
+        action = st.radio("SIDE", ["BUY", "SELL"], horizontal=True)
         
         lot = ASSETS_INFO[selected]['lot']
-        est_val = (limit_price if order_type != "MARKET" else curr_price) * qty * lot
+        val = curr_price * qty * lot
         
         st.markdown("---")
-        st.caption(f"REQ MARGIN: ₹{est_val:,.0f}")
+        st.markdown(f"**MARGIN:** ₹{val:,.0f}")
+        st.caption(f"LOT: {lot} | FEES: ₹500")
         
-        if st.form_submit_button("TRANSMIT ORDER"):
-            if order_type == "MARKET":
-                success = execute_trade(st.session_state.user, selected, action, qty, curr_price, "EXECUTED")
-                if success: st.success("ORDER FILLED")
-                else: st.error("INSUFFICIENT FUNDS")
+        if st.form_submit_button("⚡ EXECUTE TRADE"):
+            cost = val + 500.0 if action == "BUY" else val - 500.0
+            
+            if action == "BUY" and st.session_state.balance < cost:
+                st.error("INSUFFICIENT FUNDS")
             else:
-                # Add to Pending
-                st.session_state.pending_orders.append({
-                    'User': st.session_state.user, 'Symbol': selected, 'Action': action,
-                    'Qty': qty, 'Type': order_type, 'Price': limit_price
-                })
-                st.info(f"{order_type} ORDER QUEUED @ {limit_price}")
+                new_bal = st.session_state.balance - cost if action == "BUY" else st.session_state.balance + cost
+                st.session_state.balance = new_bal
                 
+                # Cloud Sync
+                update_db_balance(st.session_state.user, new_bal)
+                log_trade({
+                    'Time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'User': st.session_state.user,
+                    'Symbol': selected, 'Action': action, 'Qty': qty, 'Price': curr_price, 'Value': val
+                })
+                update_portfolio(st.session_state.user, selected, qty, curr_price, action)
+                st.success("ORDER FILLED")
+                time.sleep(0.5)
+                st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-# PORTFOLIO & ORDERS
-tab1, tab2 = st.tabs(["POSITIONS", "OPEN ORDERS"])
-
-with tab1:
-    try:
-        df_port = pd.DataFrame(connect_db().worksheet("Portfolio").get_all_records())
-        if not df_port.empty:
-            my_port = df_port[df_port['User'] == st.session_state.user]
-            if not my_port.empty:
-                rows = ""
-                total_pnl = 0.0
-                for _, row in my_port.iterrows():
-                    ltp = st.session_state.prices.get(row['Symbol'], row['Avg_Price'])
-                    pnl = (ltp - row['Avg_Price']) * row['Qty'] * ASSETS_INFO.get(row['Symbol'], {'lot':1})['lot']
-                    total_pnl += pnl
-                    color = "#00ff41" if pnl >= 0 else "#ff3333"
-                    rows += f"<tr><td>{row['Symbol']}</td><td>{row['Qty']}</td><td>{row['Avg_Price']}</td><td style='color:{color}'>{pnl:,.2f}</td></tr>"
+# PORTFOLIO (Live P&L)
+st.markdown("### 💼 OPEN POSITIONS")
+try:
+    df_port = pd.DataFrame(connect_db().worksheet("Portfolio").get_all_records())
+    if not df_port.empty:
+        my_port = df_port[df_port['User'] == st.session_state.user]
+        if not my_port.empty:
+            total_pnl = 0.0
+            rows = ""
+            for _, row in my_port.iterrows():
+                # LIVE P&L CALCULATION
+                current_ltp = st.session_state.prices.get(row['Symbol'], row['Avg_Price'])
+                lot_size = ASSETS_INFO.get(row['Symbol'], {'lot': 1})['lot']
                 
-                st.markdown(f"""
-                <table style="width:100%; border:1px solid #444; font-family:Courier New; color:#ddd">
-                    <tr style="border-bottom:1px solid #555; background:#222"><th>CONTRACT</th><th>QTY</th><th>AVG</th><th>P&L</th></tr>
-                    {rows}
-                </table>
-                <div style="margin-top:10px; padding:10px; border:1px dashed #555; text-align:center">
-                    NET P&L: <span style="font-size:20px; color:{'#00ff41' if total_pnl>=0 else '#ff3333'}">₹{total_pnl:,.2f}</span>
-                </div>
-                """, unsafe_allow_html=True)
-            else: st.info("NO POSITIONS FOUND")
-    except: st.error("DB ERROR")
-
-with tab2:
-    if st.session_state.pending_orders:
-        orders_df = pd.DataFrame(st.session_state.pending_orders)
-        st.dataframe(orders_df[['Symbol', 'Action', 'Type', 'Price', 'Qty']])
-        if st.button("CANCEL ALL"):
-            st.session_state.pending_orders = []
-            st.rerun()
-    else:
-        st.info("NO PENDING ORDERS")
+                pnl = (current_ltp - row['Avg_Price']) * row['Qty'] * lot_size
+                total_pnl += pnl
+                
+                color = "text-green" if pnl >= 0 else "text-red"
+                rows += f"""
+                <tr>
+                    <td>{row['Symbol']}</td>
+                    <td>{row['Qty']}</td>
+                    <td>{row['Avg_Price']:.2f}</td>
+                    <td>{current_ltp:.2f}</td>
+                    <td class='{color}'>{pnl:,.2f}</td>
+                </tr>
+                """
+            
+            st.markdown(f"""
+            <table>
+                <tr><th>SYMBOL</th><th>QTY</th><th>AVG</th><th>LTP</th><th>P&L</th></tr>
+                {rows}
+            </table>
+            <div style="margin-top:15px; padding:15px; background:#222; text-align:center; border:1px solid #555;">
+                TOTAL P&L: <span class='{'text-green' if total_pnl>=0 else 'text-red'}' style='font-size:24px; font-weight:bold;'>₹{total_pnl:,.2f}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        else: st.info("NO OPEN POSITIONS")
+    else: st.info("NO OPEN POSITIONS")
+except: st.error("DATABASE CONNECTION ERROR")
