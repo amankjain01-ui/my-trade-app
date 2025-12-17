@@ -3,3 +3,4 @@ pandas
 yfinance
 gspread
 google-auth
+plotly
