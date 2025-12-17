@@ -38,7 +38,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. EXACT ASSETS ---
+# --- 3. EXACT ASSETS (Verified) ---
 ASSETS = {
     "Gold 05Feb":      {"lot": 100, "start": 134230.00},
     "Silver 05Mar":    {"lot": 30,  "start": 204172.00},
@@ -51,18 +51,21 @@ ASSETS = {
     "USDINR":          {"lot": 1000,"start": 90.36}
 }
 
-# --- 4. SESSION STATE INIT ---
+# --- 4. HARD RESET STATE (Fixes the Copper Price Issue) ---
+# This forces the app to forget old wrong data and load new correct data
+if 'version_control' not in st.session_state or st.session_state.version_control != "v2.0":
+    st.session_state.prices = {k: v['start'] for k, v in ASSETS.items()}
+    st.session_state.history = {}
+    st.session_state.pending = []
+    st.session_state.version_control = "v2.0"
+
+# Standard State Init
 if 'balance' not in st.session_state: st.session_state.balance = 0.0
 if 'user' not in st.session_state: st.session_state.user = None
-if 'prices' not in st.session_state: st.session_state.prices = {k: v['start'] for k, v in ASSETS.items()}
-if 'pending' not in st.session_state: st.session_state.pending = []
-if 'msg' not in st.session_state: st.session_state.msg = "" # For error messages
 
-# Initialize Chart History
-if 'history' not in st.session_state:
-    st.session_state.history = {}
+# Initialize Chart History if missing
+if not st.session_state.history:
     for sym, start in st.session_state.prices.items():
-        # Generate 60 points of data
         times = [datetime.now() - timedelta(minutes=i*15) for i in range(60)]
         times.reverse()
         highs, lows, opens, closes = [], [], [], []
@@ -76,52 +79,48 @@ if 'history' not in st.session_state:
             curr = c
         st.session_state.history[sym] = {'time': times, 'open': opens, 'high': highs, 'low': lows, 'close': closes}
 
-# --- 5. LOGIC ENGINE (Run Every Second) ---
+# --- 5. LOGIC ENGINE ---
 def logic_engine():
-    # 1. Update Prices & Charts
+    # 1. Simulate Price Ticks
     for sym in st.session_state.prices:
         last = st.session_state.prices[sym]
         change = last * random.uniform(-0.0001, 0.0001)
         new_price = last + change
         st.session_state.prices[sym] = new_price
         
-        # Append to History
+        # Chart Data Update
         h = st.session_state.history[sym]
         h['time'].append(datetime.now())
         h['open'].append(last)
         h['close'].append(new_price)
         h['high'].append(max(last, new_price))
         h['low'].append(min(last, new_price))
-        
-        # Trim old data
         if len(h['time']) > 80:
             for key in h: h[key].pop(0)
 
-    # 2. Check Pending Orders
-    # Create copy to execute safely while iterating
-    active_orders = [o for o in st.session_state.pending]
-    executed_orders = []
-    
-    for order in active_orders:
+    # 2. CHECK LIMIT ORDERS
+    executed = []
+    # Iterate copy of list to avoid issues
+    for order in st.session_state.pending[:]:
         sym = order['Symbol']
         ltp = st.session_state.prices[sym]
         trigger = False
         
         if order['Type'] == "LIMIT":
             if order['Action'] == "BUY" and ltp <= order['Price']: trigger = True
-            if order['Action'] == "SELL" and ltp >= order['Price']: trigger = True
+            elif order['Action'] == "SELL" and ltp >= order['Price']: trigger = True
         elif order['Type'] == "SL":
             if order['Action'] == "BUY" and ltp >= order['Price']: trigger = True
-            if order['Action'] == "SELL" and ltp <= order['Price']: trigger = True
+            elif order['Action'] == "SELL" and ltp <= order['Price']: trigger = True
             
         if trigger:
             success = process_trade(order['User'], sym, order['Action'], order['Qty'], ltp)
             if success:
-                executed_orders.append(order)
+                executed.append(order)
                 st.toast(f"✅ EXECUTED: {order['Action']} {sym} @ {ltp:.2f}")
-
-    # Remove executed from main list
-    for ex in executed_orders:
+    
+    # Remove executed
+    for ex in executed:
         if ex in st.session_state.pending:
             st.session_state.pending.remove(ex)
 
@@ -200,14 +199,14 @@ if st.session_state.user is None:
     st.stop()
 
 # --- 8. MAIN UI ---
-logic_engine() # Run core logic
-st_autorefresh(interval=1000, key="refresh") # Auto refresh UI
+logic_engine()
+st_autorefresh(interval=1000, key="refresher")
 
 # SIDEBAR
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
     
-    # Quick Calibrate
+    # MANUAL CALIBRATION
     with st.expander("🔧 FIX PRICE"):
         for s in st.session_state.prices:
             v = st.number_input(s, value=float(st.session_state.prices[s]), key=s+"_cal")
@@ -237,7 +236,6 @@ with col1:
     
     st.markdown(f"<span style='font-size:42px; font-weight:bold; color:white;'>{curr:,.2f}</span> <span class='up'>LIVE</span>", unsafe_allow_html=True)
     
-    # CHART
     h = st.session_state.history[sel]
     fig = go.Figure(data=[go.Candlestick(
         x=h['time'], open=h['open'], high=h['high'], low=h['low'], close=h['close'],
